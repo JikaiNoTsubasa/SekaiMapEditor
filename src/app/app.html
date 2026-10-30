@@ -1,0 +1,32 @@
+<div class="app-container">
+  <header class="app-header">
+    <div class="header-title">
+      <h1>{{ title }}</h1>
+      <small>Sekai MMO Map Editor v0.1.0</small>
+    </div>
+    <div class="header-actions">
+      <button class="btn-header">Settings</button>
+      <button class="btn-header">Help</button>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <aside class="sidebar-left">
+      <app-file-list />
+    </aside>
+
+    <main class="main-content">
+      <div class="main-top">
+        <div class="editor-area">
+          <app-map-editor />
+        </div>
+        <div class="layer-area">
+          <app-layer-panel />
+        </div>
+      </div>
+      <div class="main-bottom">
+        <app-tileset />
+      </div>
+    </main>
+  </div>
+</div>

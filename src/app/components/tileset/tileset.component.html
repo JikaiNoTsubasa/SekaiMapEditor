@@ -1,0 +1,99 @@
+<div class="tileset-container">
+  <div class="tileset-header">
+    <h3>Tileset</h3>
+    <div class="tileset-controls">
+      <label class="btn-file">
+        Load Tileset
+        <input type="file" accept="image/png,image/jpeg" (change)="loadTilesetFromFile($event)" hidden>
+      </label>
+
+      <select class="tile-size-select" [value]="editorState.tileSize()" (change)="changeTileSize(+$any($event.target).value)">
+        <option value="8">8px</option>
+        <option value="16">16px</option>
+        <option value="32">32px</option>
+        <option value="64">64px</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="tileset-canvas-wrapper">
+    <canvas
+      #tilesetCanvas
+      class="tileset-canvas"
+      (mousedown)="onMouseDown($event)"
+      (mousemove)="onMouseMove($event)"
+      (mouseup)="onMouseUp()"
+      (mouseleave)="onMouseUp()"
+    ></canvas>
+  </div>
+
+  @if (editorState.selectedTiles()) {
+    <div class="selection-info">
+      <small>
+        Selection: {{ editorState.selectedTiles()!.width }}x{{ editorState.selectedTiles()!.height }}
+        ({{ editorState.selectedTiles()!.tiles.length }} tiles)
+      </small>
+    </div>
+  }
+
+  <!-- Animation Controls -->
+  <div class="animation-controls">
+    <div class="animation-header">
+      <h4>Animation</h4>
+      <button
+        class="btn-toggle-animation"
+        [class.active]="editorState.animationMode()"
+        (click)="toggleAnimationMode()"
+        title="Toggle animation mode"
+      >
+        {{ editorState.animationMode() ? '🎬 Active' : '🎬 Off' }}
+      </button>
+    </div>
+
+    @if (editorState.animationMode()) {
+      <div class="animation-settings">
+        <div class="duration-control">
+          <label>Duration (ms):</label>
+          <input
+            type="number"
+            [value]="editorState.animationDuration()"
+            (input)="setAnimationDuration(+$any($event.target).value)"
+            min="50"
+            step="50"
+          />
+        </div>
+
+        <button
+          class="btn-add-frame"
+          (click)="addFrame()"
+          [disabled]="!editorState.selectedTiles() || editorState.selectedTiles()!.tiles.length !== 1"
+        >
+          ➕ Add Frame
+        </button>
+
+        @if (editorState.animationFrames().length > 0) {
+          <div class="frames-list">
+            <div class="frames-header">
+              <small>Frames: {{ editorState.animationFrames().length }}</small>
+              <button class="btn-clear-frames" (click)="clearFrames()">Clear All</button>
+            </div>
+            <div class="frames-container">
+              @for (frame of editorState.animationFrames(); track $index) {
+                <div class="frame-item">
+                  <span class="frame-number">{{ $index + 1 }}</span>
+                  <span class="frame-coords">Tile {{ frame.tileX }},{{ frame.tileY }}</span>
+                  <span class="frame-duration">{{ frame.duration }}ms</span>
+                  <button
+                    class="btn-remove-frame"
+                    (click)="removeFrame($index)"
+                    title="Remove frame"
+                  >×</button>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

@@ -1,0 +1,108 @@
+<div class="layer-panel-container">
+  <div class="layer-panel-header">
+    <h3>Layers</h3>
+    <small>Top to Bottom</small>
+  </div>
+
+  <div class="layer-list">
+    @for (layer of layers(); track layer.id) {
+      <div
+        class="layer-item"
+        [class.selected]="editorState.currentLayer() === layer.id"
+        [class.locked]="layer.locked"
+        (click)="selectLayer(layer.id)"
+      >
+        <div class="layer-controls">
+          <button
+            class="btn-icon"
+            [class.active]="layer.visible"
+            (click)="toggleVisibility(layer.id, $event)"
+            title="Toggle visibility"
+          >
+            {{ layer.visible ? '👁️' : '🚫' }}
+          </button>
+          <button
+            class="btn-icon"
+            [class.active]="layer.locked"
+            (click)="toggleLock(layer.id, $event)"
+            title="Toggle lock"
+          >
+            {{ layer.locked ? '🔒' : '🔓' }}
+          </button>
+        </div>
+
+        <div class="layer-info">
+          <div class="layer-name">{{ layer.name }}</div>
+          <div class="layer-description">{{ layer.description }}</div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Event Configuration -->
+  @if (editorState.currentLayer() === 'event') {
+    <div class="event-config">
+      <div class="event-config-header">
+        <h4>Event Configuration</h4>
+      </div>
+
+      <div class="event-config-form">
+        <div class="form-group">
+          <label>Event Type</label>
+          <select [value]="currentEventType()" (change)="setEventType($any($event.target).value)">
+            <option value="WARP">WARP - Teleport to another map</option>
+            <option value="DIALOG">DIALOG - Show dialog box</option>
+            <option value="TRIGGER">TRIGGER - Execute script</option>
+            <option value="SPAWN">SPAWN - NPC/Monster spawn point</option>
+            <option value="CUSTOM">CUSTOM - Custom event</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Event Name</label>
+          <input
+            type="text"
+            [value]="currentEventName()"
+            (input)="setEventName($any($event.target).value)"
+            placeholder="e.g., warp_to_town, dialog_npc_1"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Parameters (JSON)</label>
+          <textarea
+            [value]="currentEventParams()"
+            (input)="setEventParams($any($event.target).value)"
+            placeholder='{"target": "town", "x": 10, "y": 5}'
+            rows="3"
+          ></textarea>
+          @if (eventParamsError()) {
+            <small class="error">{{ eventParamsError() }}</small>
+          }
+        </div>
+
+        <button class="btn-clear-event" (click)="clearEventConfig()">
+          Clear Configuration
+        </button>
+      </div>
+
+      @if (currentEventType() || currentEventName()) {
+        <div class="event-config-preview">
+          <small class="preview-label">Preview:</small>
+          <div class="preview-content">
+            @if (currentEventType()) {
+              <span class="preview-item">Type: <strong>{{ currentEventType() }}</strong></span>
+            }
+            @if (currentEventName()) {
+              <span class="preview-item">Name: <strong>{{ currentEventName() }}</strong></span>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <div class="layer-panel-footer">
+    <small>Layers are fixed and cannot be reordered</small>
+  </div>
+</div>

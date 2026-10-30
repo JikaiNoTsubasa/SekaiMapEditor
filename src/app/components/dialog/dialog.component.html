@@ -1,0 +1,90 @@
+@if (visible()) {
+  <div class="dialog-backdrop" (click)="onBackdropClick($event)">
+    <div class="dialog-container" role="dialog" aria-modal="true" (keydown)="onKeyDown($event)" tabindex="0">
+      <div class="dialog-header">
+        <h2>{{ config()?.title }}</h2>
+        <button class="btn-close" (click)="close()" aria-label="Close">×</button>
+      </div>
+
+      <div class="dialog-body">
+        @if (config()?.message) {
+          <p class="dialog-message">{{ config()?.message }}</p>
+        }
+
+        @if (fields().length > 0) {
+          <form class="dialog-form" (submit)="$event.preventDefault()">
+            @for (field of fields(); track field.key) {
+              <div class="form-field">
+                <label [for]="'field-' + field.key">
+                  {{ field.label }}
+                  @if (field.required) {
+                    <span class="required">*</span>
+                  }
+                </label>
+
+                @switch (field.type) {
+                  @case ('text') {
+                    <input
+                      [id]="'field-' + field.key"
+                      type="text"
+                      [value]="fieldValues()[field.key]"
+                      (input)="updateFieldValue(field.key, $any($event.target).value)"
+                      [placeholder]="field.placeholder || ''"
+                      [required]="field.required || false"
+                    />
+                  }
+                  @case ('number') {
+                    <input
+                      [id]="'field-' + field.key"
+                      type="number"
+                      [value]="fieldValues()[field.key]"
+                      (input)="updateFieldValue(field.key, +$any($event.target).value)"
+                      [placeholder]="field.placeholder || ''"
+                      [min]="field.min"
+                      [max]="field.max"
+                      [step]="field.step || 1"
+                      [required]="field.required || false"
+                    />
+                  }
+                  @case ('select') {
+                    <select
+                      [id]="'field-' + field.key"
+                      [value]="fieldValues()[field.key]"
+                      (change)="updateFieldValue(field.key, typeof field.value === 'number' ? +$any($event.target).value : $any($event.target).value)"
+                      [required]="field.required || false"
+                    >
+                      @for (option of field.options; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  }
+                  @case ('textarea') {
+                    <textarea
+                      [id]="'field-' + field.key"
+                      [value]="fieldValues()[field.key]"
+                      (input)="updateFieldValue(field.key, $any($event.target).value)"
+                      [placeholder]="field.placeholder || ''"
+                      [required]="field.required || false"
+                      rows="4"
+                    ></textarea>
+                  }
+                }
+              </div>
+            }
+          </form>
+        }
+      </div>
+
+      <div class="dialog-footer">
+        @if (!config()?.confirmOnly) {
+          <button class="btn btn-secondary" (click)="close()">
+            {{ config()?.cancelText || 'Cancel' }}
+          </button>
+        }
+        <button class="btn btn-primary" (click)="confirm()">
+          {{ config()?.confirmText || 'OK' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

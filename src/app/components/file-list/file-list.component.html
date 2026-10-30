@@ -1,0 +1,31 @@
+<div class="file-list-container">
+  <div class="file-list-header">
+    <h3>Maps (.sm)</h3>
+    <button class="btn-new" (click)="createNewFile()">+ New</button>
+  </div>
+
+  <div class="file-list">
+    @if (files().length === 0) {
+      <div class="empty-state">
+        <p>No maps found</p>
+        <small>Create a new map to get started</small>
+      </div>
+    } @else {
+      @for (file of files(); track file) {
+        <div
+          class="file-item"
+          [class.active]="currentMap() === file"
+          (click)="selectFile(file)"
+        >
+          <span class="file-icon">📄</span>
+          <span class="file-name">{{ file }}</span>
+          <button
+            class="btn-delete"
+            (click)="deleteFile(file, $event)"
+            title="Delete map"
+          >🗑️</button>
+        </div>
+      }
+    }
+  </div>
+</div>

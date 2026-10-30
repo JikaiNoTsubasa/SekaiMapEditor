@@ -1,0 +1,51 @@
+<div class="map-editor-container">
+  <div class="map-editor-toolbar">
+    <div class="toolbar-group">
+      <button class="btn-tool" (click)="newMap()" title="New Map">📄 New</button>
+      <button class="btn-tool" (click)="importMap()" title="Open Map">📂 Open</button>
+      <button class="btn-tool" (click)="saveMap()" title="Save Map (localStorage)">💾 Save</button>
+      <button class="btn-tool" (click)="exportMap()" title="Export Map (.sm file)">⬇️ Export</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button
+        class="btn-tool"
+        [class.active]="editorState.currentTool() === 'paint'"
+        (click)="setTool('paint')"
+        title="Paint Tool"
+      >🖌️</button>
+      <button
+        class="btn-tool"
+        [class.active]="editorState.currentTool() === 'fill'"
+        (click)="setTool('fill')"
+        title="Fill Tool"
+      >🪣</button>
+      <button
+        class="btn-tool"
+        [class.active]="editorState.currentTool() === 'erase'"
+        (click)="setTool('erase')"
+        title="Eraser"
+      >🧹</button>
+      <button
+        class="btn-tool"
+        [class.active]="editorState.currentTool() === 'select'"
+        (click)="setTool('select')"
+        title="Select"
+      >⬚</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn-tool" title="Zoom In">🔍+</button>
+      <button class="btn-tool" title="Zoom Out">🔍-</button>
+      <button class="btn-tool" title="Reset Zoom">🔍↺</button>
+    </div>
+
+    <div class="toolbar-info">
+      <small>Use arrow keys to pan, mouse wheel to zoom</small>
+    </div>
+  </div>
+
+  <div class="game-wrapper">
+    <div #gameContainer class="game-container"></div>
+  </div>
+</div>
