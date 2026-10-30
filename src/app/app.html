@@ -4,29 +4,49 @@
       <h1>{{ title }}</h1>
       <small>Sekai MMO Map Editor v0.1.0</small>
     </div>
+    <div class="header-center">
+      @if (mapService.currentMapName()) {
+        <span class="current-file">{{ mapService.currentMapName() }}.sm</span>
+      }
+    </div>
     <div class="header-actions">
+      <button class="btn-header btn-save" (click)="saveCurrentMap()" [disabled]="!mapService.currentMap()" title="Save current map (Ctrl+S)">
+        💾 Save
+      </button>
       <button class="btn-header">Settings</button>
       <button class="btn-header">Help</button>
     </div>
   </header>
 
   <div class="app-layout">
+    <!-- Left sidebar: File list and Layers -->
     <aside class="sidebar-left">
-      <app-file-list />
+      <div class="left-top">
+        <app-file-list />
+      </div>
+      <div class="left-bottom">
+        <app-layer-panel />
+      </div>
     </aside>
 
+    <!-- Center: Map editor -->
     <main class="main-content">
-      <div class="main-top">
-        <div class="editor-area">
-          <app-map-editor />
-        </div>
-        <div class="layer-area">
-          <app-layer-panel />
-        </div>
+      <app-map-editor />
+    </main>
+
+    <!-- Resizer for right sidebar -->
+    <div class="resizer-vertical" (mousedown)="onResizerMouseDown($event)"></div>
+
+    <!-- Right sidebar: Tile preview and Tileset -->
+    <aside class="sidebar-right" #rightSidebar>
+      <div class="right-top">
+        <app-tile-preview />
       </div>
-      <div class="main-bottom">
+      <div class="right-middle">
         <app-tileset />
       </div>
-    </main>
+    </aside>
   </div>
+
+  <app-toast />
 </div>

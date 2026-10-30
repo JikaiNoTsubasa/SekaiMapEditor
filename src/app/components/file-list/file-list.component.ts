@@ -18,30 +18,29 @@ export class FileListComponent {
     private dialogService: DialogService
   ) {}
 
-  selectFile(fileName: string) {
-    const map = this.mapService.loadMap(fileName);
+  async openFile() {
+    const map = await this.mapService.openMapFile();
     if (map) {
-      // Notify that map was loaded
-      // The MapEditorComponent will handle the actual loading via the service
-      console.log('Map selected:', fileName);
+      const name = this.mapService.currentMapName();
+      console.log('Map selected:', name);
 
       // Trigger a custom event to notify the map editor
-      window.dispatchEvent(new CustomEvent('map-loaded', { detail: { map, name: fileName } }));
+      window.dispatchEvent(new CustomEvent('map-loaded', { detail: { map, name } }));
     }
   }
 
-  async deleteFile(fileName: string, event: Event) {
+  async removeFromRecent(fileName: string, event: Event) {
     event.stopPropagation();
 
     const confirmed = await this.dialogService.confirm(
-      'Delete Map',
-      `Are you sure you want to delete "${fileName}"?`,
-      'Delete',
+      'Remove from Recent',
+      `Remove "${fileName}" from recent files?`,
+      'Remove',
       'Cancel'
     );
 
     if (confirmed) {
-      this.mapService.deleteMap(fileName);
+      this.mapService.removeFromRecentFiles(fileName);
     }
   }
 
@@ -50,9 +49,13 @@ export class FileListComponent {
     if (!result) return;
 
     const map = this.mapService.createNewMap(result.name, result.width, result.height, result.tileSize);
-    this.mapService.saveMap();
 
-    // Trigger event to load in editor
-    window.dispatchEvent(new CustomEvent('map-loaded', { detail: { map, name: result.name } }));
+    // Save the new map
+    const saved = await this.mapService.saveMap(result.name);
+
+    if (saved) {
+      // Trigger event to load in editor
+      window.dispatchEvent(new CustomEvent('map-loaded', { detail: { map, name: result.name } }));
+    }
   }
 }

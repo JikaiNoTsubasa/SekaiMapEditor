@@ -22,22 +22,13 @@
       class="tileset-canvas"
       (mousedown)="onMouseDown($event)"
       (mousemove)="onMouseMove($event)"
-      (mouseup)="onMouseUp()"
-      (mouseleave)="onMouseUp()"
+      (mouseup)="onMouseUp($event)"
+      (mouseleave)="onMouseUp($event)"
     ></canvas>
   </div>
 
-  @if (editorState.selectedTiles()) {
-    <div class="selection-info">
-      <small>
-        Selection: {{ editorState.selectedTiles()!.width }}x{{ editorState.selectedTiles()!.height }}
-        ({{ editorState.selectedTiles()!.tiles.length }} tiles)
-      </small>
-    </div>
-  }
-
-  <!-- Animation Controls -->
-  <div class="animation-controls">
+  <!-- Animation Controls (compact) -->
+  <div class="animation-controls-compact">
     <div class="animation-header">
       <h4>Animation</h4>
       <button

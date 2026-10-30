@@ -1,7 +1,12 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
 .layer-panel-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  width: 100%;
   background-color: #252526;
   border-bottom: 1px solid #3c3c3c;
 }
@@ -25,7 +30,6 @@
 
 .layer-list {
   flex: 1;
-  overflow-y: auto;
   padding: 8px;
 }
 

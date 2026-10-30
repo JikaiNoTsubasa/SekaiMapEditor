@@ -125,12 +125,8 @@ export class MapEditorComponent implements AfterViewInit, OnDestroy {
       // Update the map service with current data
       this.mapService.currentMap.set(mapData);
 
-      const saved = this.mapService.saveMap();
-      if (saved) {
-        await this.dialogService.alert('Success', `Map saved: ${this.mapService.currentMapName()}`);
-      } else {
-        await this.dialogService.alert('Error', 'Failed to save map');
-      }
+      // MapService shows the success/error toast
+      await this.mapService.saveMap();
     }
   }
 
@@ -157,10 +153,9 @@ export class MapEditorComponent implements AfterViewInit, OnDestroy {
         const map = await this.mapService.importMapFromFile(file);
         if (this.currentScene && map) {
           this.currentScene.loadFromSekaiMap(map);
-          await this.dialogService.alert('Success', `Map loaded: ${this.mapService.currentMapName()}`);
         }
       } catch (error) {
-        await this.dialogService.alert('Error', 'Failed to import map');
+        // MapService already shows the error toast
         console.error(error);
       }
     };
@@ -178,7 +173,14 @@ class EditorScene extends Phaser.Scene {
   private currentTool: string = 'paint';
   private editorState!: EditorStateService;
   private gridGraphics: Phaser.GameObjects.Graphics | null = null;
+  private gridParams: { tileSize: number; width: number; height: number } | null = null;
+  private gridKey = '';
+
+  // Collision data: 1 value per tile (0 = free, 1 = blocked), shown only on the collider layer
+  private colliderData: Uint8Array = new Uint8Array(0);
+  private colliderGraphics: Phaser.GameObjects.Graphics | null = null;
   private isMouseDown: boolean = false;
+  private readonly INACTIVE_LAYER_ALPHA = 0.4;
 
   // Layer order (bottom to top)
   private layerOrder: LayerType[] = ['floor', 'behind', 'front', 'collider', 'event'];
@@ -204,6 +206,7 @@ class EditorScene extends Phaser.Scene {
   create() {
     // Setup camera controls
     this.cameras.main.setZoom(1);
+    this.cameras.main.roundPixels = true;
 
     const cursors = this.input.keyboard?.createCursorKeys();
     if (cursors) {
@@ -234,13 +237,26 @@ class EditorScene extends Phaser.Scene {
     });
 
     // Mouse events for painting
+    // Right click is used for panning, so disable the browser context menu
+    this.input.mouse?.disableContextMenu();
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown()) return; // handled by panning
       this.isMouseDown = true;
       this.handleTilePlacement(pointer);
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.isMouseDown && this.currentTool === 'paint') {
+      // Right click drag: pan the camera
+      if (pointer.rightButtonDown()) {
+        const cam = this.cameras.main;
+        cam.scrollX -= (pointer.x - pointer.prevPosition.x) / cam.zoom;
+        cam.scrollY -= (pointer.y - pointer.prevPosition.y) / cam.zoom;
+        return;
+      }
+
+      const dragErase = this.currentLayer === 'collider' && this.currentTool === 'erase';
+      if (this.isMouseDown && (this.currentTool === 'paint' || dragErase)) {
         this.handleTilePlacement(pointer);
       }
     });
@@ -265,6 +281,12 @@ class EditorScene extends Phaser.Scene {
       this.gridGraphics.destroy();
     }
 
+    // Reset collisions
+    this.colliderData = new Uint8Array(width * height);
+    this.colliderGraphics?.destroy();
+    this.colliderGraphics = this.add.graphics();
+    this.colliderGraphics.setDepth(500); // Above tiles, below the grid
+
     // Create blank tilemap
     this.tilemap = this.make.tilemap({
       width: width,
@@ -274,7 +296,8 @@ class EditorScene extends Phaser.Scene {
     });
 
     // Add tileset
-    this.tileset = this.tilemap.addTilesetImage('tileset', 'tileset');
+    // gid = 1: tile indices are 1-based (0 = empty), matching firstgid in the saved map
+    this.tileset = this.tilemap.addTilesetImage('tileset', 'tileset', tileSize, tileSize, 0, 0, 1);
 
     if (!this.tileset) {
       console.error('Failed to load tileset');
@@ -283,6 +306,9 @@ class EditorScene extends Phaser.Scene {
 
     // Create layers in order (bottom to top)
     this.layerOrder.forEach(layerId => {
+      // The collider layer holds 0/1 flags, not tiles: it is drawn by colliderGraphics
+      if (layerId === 'collider') return;
+
       if (this.tilemap && this.tileset) {
         const layer = this.tilemap.createBlankLayer(layerId, this.tileset, 0, 0, width, height);
 
@@ -290,19 +316,16 @@ class EditorScene extends Phaser.Scene {
           this.layers.set(layerId, layer);
 
           // Set layer visual effects
-          if (layerId === 'collider') {
-            // Red tint for colliders
-            layer.setTint(0xff6666);
-            layer.setAlpha(0.6);
-          }
           if (layerId === 'event') {
             // Yellow tint for events
             layer.setTint(0xffff66);
-            layer.setAlpha(0.6);
           }
         }
       }
     });
+
+    this.updateLayerOpacity();
+    this.redrawColliders();
 
     // Draw grid
     this.drawGrid(tileSize, width * tileSize, height * tileSize);
@@ -312,37 +335,107 @@ class EditorScene extends Phaser.Scene {
 
   private drawGrid(tileSize: number, width: number, height: number) {
     this.gridGraphics = this.add.graphics();
-    this.gridGraphics.lineStyle(1, 0x333333, 0.5);
-
-    // Vertical lines
-    for (let x = 0; x <= width; x += tileSize) {
-      this.gridGraphics.moveTo(x, 0);
-      this.gridGraphics.lineTo(x, height);
-    }
-
-    // Horizontal lines
-    for (let y = 0; y <= height; y += tileSize) {
-      this.gridGraphics.moveTo(0, y);
-      this.gridGraphics.lineTo(width, y);
-    }
-
-    this.gridGraphics.strokePath();
     this.gridGraphics.setDepth(1000); // Keep grid on top
+    this.gridParams = { tileSize, width, height };
+    this.redrawGrid();
+  }
+
+  /**
+   * Draw the dotted grid and red border in screen space: every dot is a whole
+   * screen pixel, whatever the zoom, so lines stay crisp.
+   */
+  private redrawGrid() {
+    const g = this.gridGraphics;
+    const params = this.gridParams;
+    if (!g || !params) return;
+
+    const cam = this.cameras.main;
+    const z = cam.zoom;
+    const v = cam.worldView;
+    const { tileSize, width, height } = params;
+
+    g.clear();
+
+    // Fill a rectangle given in screen pixels
+    const rect = (sx: number, sy: number, sw: number, sh: number) => {
+      g.fillRect(v.x + sx / z, v.y + sy / z, sw / z, sh / z);
+    };
+    const toScreenX = (wx: number) => Math.round((wx - v.x) * z);
+    const toScreenY = (wy: number) => Math.round((wy - v.y) * z);
+
+    const left = toScreenX(0);
+    const right = toScreenX(width);
+    const top = toScreenY(0);
+    const bottom = toScreenY(height);
+
+    // Visible part of the map, in screen pixels
+    const visLeft = Math.max(left, 0);
+    const visRight = Math.min(right, cam.width);
+    const visTop = Math.max(top, 0);
+    const visBottom = Math.min(bottom, cam.height);
+
+    // Skip the grid when tiles are too small to read
+    if (tileSize * z >= 4) {
+      const DASH = 2; // dot length in screen px
+      const PERIOD = 4;
+      g.fillStyle(0x888888, 0.5);
+
+      const firstCol = Math.max(0, Math.floor(v.x / tileSize));
+      const lastCol = Math.min(width / tileSize, Math.ceil((v.x + cam.width / z) / tileSize));
+      const firstRow = Math.max(0, Math.floor(v.y / tileSize));
+      const lastRow = Math.min(height / tileSize, Math.ceil((v.y + cam.height / z) / tileSize));
+
+      // Dash pattern is anchored to the map origin so dots do not crawl while panning
+      const startY = top + Math.ceil(Math.max(0, visTop - top) / PERIOD) * PERIOD;
+      const startX = left + Math.ceil(Math.max(0, visLeft - left) / PERIOD) * PERIOD;
+
+      for (let col = firstCol; col <= lastCol; col++) {
+        const sx = toScreenX(col * tileSize);
+        if (sx < visLeft || sx > visRight) continue;
+        for (let sy = startY; sy < visBottom; sy += PERIOD) {
+          rect(sx, sy, 1, Math.min(DASH, visBottom - sy));
+        }
+      }
+
+      for (let row = firstRow; row <= lastRow; row++) {
+        const sy = toScreenY(row * tileSize);
+        if (sy < visTop || sy > visBottom) continue;
+        for (let sx = startX; sx < visRight; sx += PERIOD) {
+          rect(sx, sy, Math.min(DASH, visRight - sx), 1);
+        }
+      }
+    }
+
+    // Red border, 2 screen px thick, drawn just outside the map
+    const B = 2;
+    g.fillStyle(0xff0000, 1);
+    rect(left - B, top - B, right - left + 2 * B, B); // top
+    rect(left - B, bottom, right - left + 2 * B, B); // bottom
+    rect(left - B, top, B, bottom - top); // left
+    rect(right, top, B, bottom - top); // right
+
+    this.gridKey = `${v.x},${v.y},${z},${cam.width},${cam.height}`;
   }
 
   private handleTilePlacement(pointer: Phaser.Input.Pointer) {
     if (!this.tilemap || !this.editorState) return;
+
+    // Convert pointer position to tile coordinates
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(worldPoint.x / this.tilemap.tileWidth);
+    const tileY = Math.floor(worldPoint.y / this.tilemap.tileHeight);
+
+    // Collider layer works with 0/1 flags and needs no tile selection
+    if (this.currentLayer === 'collider') {
+      this.handleColliderPlacement(tileX, tileY);
+      return;
+    }
 
     const selectedTiles = this.editorState.selectedTiles();
     if (!selectedTiles) return;
 
     const layer = this.layers.get(this.currentLayer);
     if (!layer) return;
-
-    // Convert pointer position to tile coordinates
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const tileX = Math.floor(worldPoint.x / this.tilemap.tileWidth);
-    const tileY = Math.floor(worldPoint.y / this.tilemap.tileHeight);
 
     // Place tiles based on tool
     if (this.currentTool === 'paint') {
@@ -410,6 +503,61 @@ class EditorScene extends Phaser.Scene {
 
       // Flood fill algorithm
       this.floodFill(layer, tileX, tileY, targetIndex, fillIndex);
+    }
+  }
+
+  private handleColliderPlacement(tileX: number, tileY: number) {
+    if (!this.tilemap) return;
+    const w = this.tilemap.width;
+    const h = this.tilemap.height;
+    if (tileX < 0 || tileY < 0 || tileX >= w || tileY >= h) return;
+
+    if (this.currentTool === 'paint') {
+      this.setCollider(tileX, tileY, 1);
+    } else if (this.currentTool === 'erase') {
+      this.setCollider(tileX, tileY, 0);
+    } else if (this.currentTool === 'fill') {
+      // Flood fill the connected area that has the same value as the clicked tile
+      const target = this.colliderData[tileY * w + tileX];
+      const value = target === 1 ? 0 : 1;
+      const stack = [{ x: tileX, y: tileY }];
+      while (stack.length > 0) {
+        const { x, y } = stack.pop()!;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        if (this.colliderData[y * w + x] !== target) continue;
+        this.colliderData[y * w + x] = value;
+        stack.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
+      }
+      this.redrawColliders();
+    }
+  }
+
+  private setCollider(x: number, y: number, value: number) {
+    const index = y * this.tilemap!.width + x;
+    if (this.colliderData[index] === value) return;
+    this.colliderData[index] = value;
+    this.redrawColliders();
+  }
+
+  /**
+   * Draw a red square on every blocked tile; only visible while the collider layer is selected
+   */
+  private redrawColliders() {
+    const g = this.colliderGraphics;
+    if (!g || !this.tilemap) return;
+
+    g.clear();
+    g.setVisible(this.currentLayer === 'collider');
+    if (this.currentLayer !== 'collider') return;
+
+    const { width, height, tileWidth, tileHeight } = this.tilemap;
+    g.fillStyle(0xff0000, 0.5);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.colliderData[y * width + x]) {
+          g.fillRect(x * tileWidth, y * tileHeight, tileWidth, tileHeight);
+        }
+      }
     }
   }
 
@@ -524,8 +672,21 @@ class EditorScene extends Phaser.Scene {
   setCurrentLayer(layerId: LayerType) {
     if (this.layerOrder.includes(layerId)) {
       this.currentLayer = layerId;
+      this.updateLayerOpacity();
+      this.redrawColliders();
       console.log('Current layer set to:', layerId);
     }
+  }
+
+  /**
+   * Dim every layer except the current one so its content stands out
+   */
+  private updateLayerOpacity() {
+    this.layers.forEach((layer, layerId) => {
+      if (!layer) return;
+      const baseAlpha = layerId === 'event' ? 0.6 : 1;
+      layer.setAlpha(layerId === this.currentLayer ? baseAlpha : baseAlpha * this.INACTIVE_LAYER_ALPHA);
+    });
   }
 
   setCurrentTool(tool: string) {
@@ -534,7 +695,12 @@ class EditorScene extends Phaser.Scene {
   }
 
   override update() {
-    // Update logic here
+    // Redraw the grid only when the camera changed
+    const cam = this.cameras.main;
+    const v = cam.worldView;
+    if (this.gridKey !== `${v.x},${v.y},${cam.zoom},${cam.width},${cam.height}`) {
+      this.redrawGrid();
+    }
   }
 
   /**
@@ -578,6 +744,14 @@ class EditorScene extends Phaser.Scene {
 
     // Load data for each layer
     map.layers.forEach((layerData: any) => {
+      if (layerData.id === 'collider' && layerData.data) {
+        layerData.data.forEach((value: number, i: number) => {
+          if (i < this.colliderData.length) this.colliderData[i] = value ? 1 : 0;
+        });
+        this.redrawColliders();
+        return;
+      }
+
       const layer = this.layers.get(layerData.id as LayerType);
       if (layer && layerData.data) {
         // Convert 1D array to 2D and place tiles
@@ -627,6 +801,11 @@ class EditorScene extends Phaser.Scene {
     this.layerOrder.forEach((layerId) => {
       const layer = this.layers.get(layerId);
       const mapLayer = map.layers.find((l: MapLayer) => l.id === layerId);
+
+      if (layerId === 'collider' && mapLayer) {
+        mapLayer.data = Array.from(this.colliderData);
+        return;
+      }
 
       if (layer && mapLayer) {
         const data: number[] = [];

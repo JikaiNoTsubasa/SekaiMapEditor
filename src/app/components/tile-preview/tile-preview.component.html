@@ -1,0 +1,25 @@
+<div class="tile-preview-container">
+  <div class="preview-header">
+    <h3>Selected Tile</h3>
+  </div>
+
+  <div class="preview-canvas-wrapper">
+    <canvas
+      #previewCanvas
+      class="preview-canvas"
+    ></canvas>
+  </div>
+
+  @if (editorState.selectedTiles()) {
+    <div class="preview-info">
+      <small>
+        {{ editorState.selectedTiles()!.width }}x{{ editorState.selectedTiles()!.height }}
+        ({{ editorState.selectedTiles()!.tiles.length }} tiles)
+      </small>
+    </div>
+  } @else {
+    <div class="preview-info">
+      <small>No tile selected</small>
+    </div>
+  }
+</div>

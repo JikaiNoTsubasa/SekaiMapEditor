@@ -1,29 +1,34 @@
 <div class="file-list-container">
   <div class="file-list-header">
-    <h3>Maps (.sm)</h3>
-    <button class="btn-new" (click)="createNewFile()">+ New</button>
+    <h3>Files</h3>
+    <div class="header-actions">
+      <button class="btn-new" (click)="createNewFile()" title="Create new map">+ New</button>
+      <button class="btn-open" (click)="openFile()" title="Open existing map file">📂 Open</button>
+    </div>
   </div>
 
   <div class="file-list">
     @if (files().length === 0) {
       <div class="empty-state">
-        <p>No maps found</p>
-        <small>Create a new map to get started</small>
+        <p>No recent files</p>
+        <small>Open or create a map to get started</small>
       </div>
     } @else {
+      <div class="recent-files-label">
+        <small>Recent Files</small>
+      </div>
       @for (file of files(); track file) {
         <div
           class="file-item"
           [class.active]="currentMap() === file"
-          (click)="selectFile(file)"
         >
           <span class="file-icon">📄</span>
           <span class="file-name">{{ file }}</span>
           <button
             class="btn-delete"
-            (click)="deleteFile(file, $event)"
-            title="Delete map"
-          >🗑️</button>
+            (click)="removeFromRecent(file, $event)"
+            title="Remove from recent files"
+          >✕</button>
         </div>
       }
     }

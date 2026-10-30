@@ -1,4 +1,5 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { ToastService } from './toast.service';
 import { SekaiMap, createEmptyMap, MapLayer, LayerType } from '../models/sekai-map.model';
 
 @Injectable({
@@ -8,6 +9,10 @@ export class MapService {
   currentMap = signal<SekaiMap | null>(null);
   currentMapName = signal<string | null>(null);
   mapList = signal<string[]>([]);
+
+  // File handle for current file (File System Access API)
+  private currentFileHandle: any = null;
+  private toast = inject(ToastService);
 
   constructor() {
     this.loadMapListFromStorage();
@@ -24,140 +29,238 @@ export class MapService {
   }
 
   /**
-   * Save current map to browser localStorage
+   * Save current map to file
    */
-  saveMap(name?: string): boolean {
+  async saveMap(name?: string): Promise<boolean> {
     const mapToSave = this.currentMap();
     const mapName = name || this.currentMapName();
 
     if (!mapToSave || !mapName) {
       console.error('No map to save or no map name provided');
+      this.toast.warning('No map to save');
       return false;
     }
 
     try {
       const mapJson = JSON.stringify(mapToSave, null, 2);
-      localStorage.setItem(`sekaimap_${mapName}`, mapJson);
 
-      // Update map list
-      const currentList = this.mapList();
-      if (!currentList.includes(mapName)) {
-        this.mapList.set([...currentList, mapName]);
-        this.saveMapListToStorage();
+      // Use File System Access API if available
+      if ('showSaveFilePicker' in window) {
+        // If we have a current file handle, use it for quick save
+        if (this.currentFileHandle) {
+          await this.writeToFileHandle(this.currentFileHandle, mapJson);
+          console.log('Map saved:', mapName);
+          this.toast.success(`Map saved: ${mapName}`);
+          return true;
+        }
+
+        // Otherwise, prompt user to save as
+        return await this.saveMapAs(mapName, mapJson);
+      } else {
+        // Fallback: download as file
+        this.downloadMapFile(mapName, mapJson);
+        this.toast.success(`Map downloaded: ${mapName}.sm`);
+        return true;
       }
-
-      console.log('Map saved:', mapName);
-      return true;
     } catch (error) {
       console.error('Failed to save map:', error);
+      this.toast.error('Failed to save map');
       return false;
     }
   }
 
   /**
-   * Load map from browser localStorage
+   * Save map as (prompts user for location)
    */
-  loadMap(name: string): SekaiMap | null {
+  private async saveMapAs(suggestedName: string, mapJson: string): Promise<boolean> {
     try {
-      const mapJson = localStorage.getItem(`sekaimap_${name}`);
-      if (!mapJson) {
-        console.error('Map not found:', name);
-        return null;
+      const options = {
+        suggestedName: `${suggestedName}.sm`,
+        types: [
+          {
+            description: 'Sekai Map Files',
+            accept: { 'application/json': ['.sm'] },
+          },
+        ],
+      };
+
+      const handle = await (window as any).showSaveFilePicker(options);
+      this.currentFileHandle = handle;
+
+      await this.writeToFileHandle(handle, mapJson);
+
+      // Update map list
+      const currentList = this.mapList();
+      if (!currentList.includes(suggestedName)) {
+        this.mapList.set([...currentList, suggestedName]);
+        this.saveMapListToStorage();
       }
 
-      const map = JSON.parse(mapJson) as SekaiMap;
-      this.currentMap.set(map);
-      this.currentMapName.set(name);
-
-      console.log('Map loaded:', name);
-      return map;
+      console.log('Map saved as:', suggestedName);
+      this.toast.success(`Map saved: ${suggestedName}.sm`);
+      return true;
     } catch (error) {
-      console.error('Failed to load map:', error);
+      if ((error as any).name !== 'AbortError') {
+        console.error('Failed to save map as:', error);
+        this.toast.error('Failed to save map');
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Write content to file handle
+   */
+  private async writeToFileHandle(handle: any, content: string): Promise<void> {
+    const writable = await handle.createWritable();
+    await writable.write(content);
+    await writable.close();
+  }
+
+  /**
+   * Download map as file (fallback for browsers without File System Access API)
+   */
+  private downloadMapFile(name: string, content: string): void {
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${name}.sm`;
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Open and load map from file
+   */
+  async openMapFile(): Promise<SekaiMap | null> {
+    try {
+      if ('showOpenFilePicker' in window) {
+        const options = {
+          types: [
+            {
+              description: 'Sekai Map Files',
+              accept: { 'application/json': ['.sm'] },
+            },
+          ],
+          multiple: false,
+        };
+
+        const [handle] = await (window as any).showOpenFilePicker(options);
+        this.currentFileHandle = handle;
+
+        const file = await handle.getFile();
+        const content = await file.text();
+        const map = JSON.parse(content) as SekaiMap;
+
+        const name = file.name.replace(/\.sm$/, '');
+        this.currentMap.set(map);
+        this.currentMapName.set(name);
+
+        // Update recent files list
+        this.addToRecentFiles(name);
+
+        console.log('Map loaded:', name);
+        this.toast.success(`Map loaded: ${name}.sm`);
+        return map;
+      } else {
+        console.error('File System Access API not supported');
+        this.toast.error('File System Access API not supported by this browser');
+        return null;
+      }
+    } catch (error) {
+      if ((error as any).name !== 'AbortError') {
+        console.error('Failed to load map:', error);
+        this.toast.error('Failed to load map');
+      }
       return null;
     }
   }
 
   /**
-   * Export map as downloadable .sm file
+   * Load map from File object (for drag & drop or file input)
    */
-  exportMapToFile(name?: string): void {
-    const mapToExport = this.currentMap();
-    const mapName = name || this.currentMapName() || 'untitled';
-
-    if (!mapToExport) {
-      console.error('No map to export');
-      return;
-    }
-
+  async loadMapFromFile(file: File): Promise<SekaiMap | null> {
     try {
-      const mapJson = JSON.stringify(mapToExport, null, 2);
-      const blob = new Blob([mapJson], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      const content = await file.text();
+      const map = JSON.parse(content) as SekaiMap;
 
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${mapName}.sm`;
-      link.click();
+      const name = file.name.replace(/\.sm$/, '');
+      this.currentMap.set(map);
+      this.currentMapName.set(name);
+      this.currentFileHandle = null; // No handle for drag & drop files
 
-      URL.revokeObjectURL(url);
-      console.log('Map exported:', mapName);
+      // Update recent files list
+      this.addToRecentFiles(name);
+
+      console.log('Map loaded:', name);
+      this.toast.success(`Map loaded: ${name}.sm`);
+      return map;
     } catch (error) {
-      console.error('Failed to export map:', error);
+      console.error('Failed to load map:', error);
+      this.toast.error('Failed to load map');
+      return null;
     }
   }
 
   /**
-   * Import map from .sm file
+   * Export current map as a downloaded .sm file
    */
-  importMapFromFile(file: File): Promise<SekaiMap> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  exportMapToFile(): boolean {
+    const map = this.currentMap();
+    const name = this.currentMapName() || 'map';
+    if (!map) return false;
 
-      reader.onload = (e) => {
-        try {
-          const mapJson = e.target?.result as string;
-          const map = JSON.parse(mapJson) as SekaiMap;
-
-          // Extract name from filename (remove .sm extension)
-          const name = file.name.replace(/\.sm$/, '');
-
-          this.currentMap.set(map);
-          this.currentMapName.set(name);
-
-          // Save to localStorage
-          this.saveMap(name);
-
-          console.log('Map imported:', name);
-          resolve(map);
-        } catch (error) {
-          console.error('Failed to import map:', error);
-          reject(error);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-
-      reader.readAsText(file);
-    });
+    this.downloadMapFile(name, JSON.stringify(map, null, 2));
+    this.toast.success(`Map exported: ${name}.sm`);
+    return true;
   }
 
   /**
-   * Delete map from localStorage
+   * Import a map from a File object; throws if the file is invalid
    */
-  deleteMap(name: string): boolean {
-    try {
-      localStorage.removeItem(`sekaimap_${name}`);
+  async importMapFromFile(file: File): Promise<SekaiMap> {
+    const map = await this.loadMapFromFile(file);
+    if (!map) {
+      throw new Error(`Invalid map file: ${file.name}`);
+    }
+    return map;
+  }
 
+  /**
+   * Add file to recent files list
+   */
+  private addToRecentFiles(name: string): void {
+    const currentList = this.mapList();
+    const updatedList = [name, ...currentList.filter(n => n !== name)].slice(0, 10); // Keep last 10
+    this.mapList.set(updatedList);
+    this.saveMapListToStorage();
+  }
+
+  /**
+   * Create a new map and optionally save it
+   */
+  async createAndSaveNewMap(name: string, width: number, height: number, tileSize: number): Promise<boolean> {
+    const map = this.createNewMap(name, width, height, tileSize);
+    return await this.saveMap(name);
+  }
+
+  /**
+   * Remove map from recent files list
+   */
+  removeFromRecentFiles(name: string): boolean {
+    try {
       const currentList = this.mapList();
       this.mapList.set(currentList.filter(m => m !== name));
       this.saveMapListToStorage();
 
-      console.log('Map deleted:', name);
+      console.log('Map removed from recent files:', name);
+      this.toast.info(`Removed from recent files: ${name}`);
       return true;
     } catch (error) {
-      console.error('Failed to delete map:', error);
+      console.error('Failed to remove map from recent files:', error);
       return false;
     }
   }

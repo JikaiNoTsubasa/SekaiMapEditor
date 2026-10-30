@@ -23,6 +23,8 @@
   border-bottom: 1px solid #3c3c3c;
 
   .header-title {
+    flex-shrink: 0;
+
     h1 {
       margin: 0;
       font-size: 18px;
@@ -36,7 +38,25 @@
     }
   }
 
+  .header-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    .current-file {
+      font-size: 13px;
+      color: #9cdcfe;
+      font-weight: 500;
+      padding: 4px 12px;
+      background-color: #1e1e1e;
+      border-radius: 3px;
+      border: 1px solid #3c3c3c;
+    }
+  }
+
   .header-actions {
+    flex-shrink: 0;
     display: flex;
     gap: 8px;
 
@@ -50,8 +70,22 @@
       font-size: 13px;
       transition: background-color 0.15s;
 
-      &:hover {
+      &:hover:not(:disabled) {
         background-color: #4c4c4c;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      &.btn-save {
+        background-color: #0e8a16;
+        color: white;
+
+        &:hover:not(:disabled) {
+          background-color: #10a51d;
+        }
       }
     }
   }
@@ -63,49 +97,75 @@
   overflow: hidden;
 }
 
+// Left sidebar - File list
 .sidebar-left {
   width: 250px;
   min-width: 200px;
   max-width: 400px;
   display: flex;
   flex-direction: column;
-  resize: horizontal;
+  overflow: hidden;
+  border-right: 1px solid #3c3c3c;
+}
+
+.left-top {
+  flex: 1;
+  min-height: 150px;
+  display: flex;
   overflow: hidden;
 }
 
+.left-bottom {
+  // Sized by its content so the layer panel never needs to scroll
+  flex-shrink: 0;
+  display: flex;
+  overflow: hidden;
+  border-top: 1px solid #3c3c3c;
+}
+
+// Main content - Map editor
 .main-content {
   flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+// Resizer for vertical split
+.resizer-vertical {
+  width: 4px;
+  background-color: #3c3c3c;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+
+  &:hover,
+  &.resizing {
+    background-color: #007acc;
+  }
+}
+
+// Right sidebar - Tile preview, Tileset
+.sidebar-right {
+  width: 350px;
+  min-width: 300px;
+  max-width: 600px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.main-top {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.editor-area {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.layer-area {
-  width: 300px;
-  min-width: 250px;
-  max-width: 500px;
-  display: flex;
-  overflow: hidden;
-  resize: horizontal;
-}
-
-.main-bottom {
-  height: 250px;
+.right-top {
+  height: 200px;
   min-height: 150px;
-  max-height: 400px;
+  max-height: 300px;
   display: flex;
   overflow: hidden;
-  resize: vertical;
 }
+
+.right-middle {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 200px;
+}
+

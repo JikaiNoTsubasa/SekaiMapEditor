@@ -23,6 +23,7 @@ export class TilesetComponent implements AfterViewInit {
 
   private ctx: CanvasRenderingContext2D | null = null;
   private selectionStart: { x: number; y: number } | null = null;
+  private hasMoved = false;
 
   constructor(public editorState: EditorStateService) {
     // Redraw when tileset loads
@@ -131,10 +132,13 @@ export class TilesetComponent implements AfterViewInit {
 
     this.selectionStart = { x, y };
     this.isSelecting.set(true);
+    this.hasMoved = false;
   }
 
   onMouseMove(event: MouseEvent) {
     if (!this.isSelecting() || !this.selectionStart) return;
+
+    this.hasMoved = true;
 
     const rect = this.canvasRef.nativeElement.getBoundingClientRect();
     const x = Math.floor((event.clientX - rect.left) / this.editorState.tileSize());
@@ -160,8 +164,27 @@ export class TilesetComponent implements AfterViewInit {
     this.drawTileset();
   }
 
-  onMouseUp() {
+  onMouseUp(event: MouseEvent) {
+    if (this.isSelecting() && this.selectionStart && !this.hasMoved) {
+      // This was a click without drag - select single tile
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const x = Math.floor((event.clientX - rect.left) / this.editorState.tileSize());
+      const y = Math.floor((event.clientY - rect.top) / this.editorState.tileSize());
+
+      const selection: TileSelection = {
+        x,
+        y,
+        width: 1,
+        height: 1,
+        tiles: [{ x, y }]
+      };
+      this.editorState.setSelectedTiles(selection);
+      this.drawTileset();
+    }
+
     this.isSelecting.set(false);
+    this.selectionStart = null;
+    this.hasMoved = false;
   }
 
   changeTileSize(size: number) {
